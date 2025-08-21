@@ -8,6 +8,7 @@ export default function Home() {
     const [hoverUpload, setHoverUpload] = useState(false);
     const [hoverTab, setHoverTab] = useState(null);
     const [theme, setTheme] = useState("light");
+    const [lightboxFile, setLightboxFile] = useState(null);
 
     async function fetchFiles() {
         try {
@@ -39,6 +40,17 @@ export default function Home() {
         } catch { }
         setTheme(next);
     }
+
+    // Close lightbox on Escape
+    useEffect(() => {
+        function onKeyDown(e) {
+            if (e.key === "Escape") setLightboxFile(null);
+        }
+        if (lightboxFile) {
+            window.addEventListener("keydown", onKeyDown);
+            return () => window.removeEventListener("keydown", onKeyDown);
+        }
+    }, [lightboxFile]);
 
     async function handleUpload(e) {
         e.preventDefault();
@@ -329,7 +341,8 @@ export default function Home() {
                         <img
                             src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
                             alt={file.key}
-                            style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 8 }}
+                            style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 8, cursor: "zoom-in" }}
+                            onClick={() => setLightboxFile(file)}
                         />
                     )}
                 />
@@ -345,6 +358,59 @@ export default function Home() {
                     )}
                 />
             )}
+        {/* Lightbox Modal */}
+        {lightboxFile && (
+            <div
+                onClick={() => setLightboxFile(null)}
+                style={{
+                    position: "fixed",
+                    top: 0,
+                    left: 0,
+                    width: "100vw",
+                    height: "100vh",
+                    background: "rgba(0,0,0,0.8)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 1000,
+                    padding: 16,
+                }}
+            >
+                <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ position: "relative", maxWidth: "90vw", maxHeight: "85vh" }}
+                >
+                    <button
+                        onClick={() => setLightboxFile(null)}
+                        style={{
+                            position: "absolute",
+                            top: -8,
+                            left: -8,
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid var(--border)",
+                            background: "var(--card-bg)",
+                            color: "var(--text)",
+                            cursor: "pointer",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                        }}
+                    >
+                        ← Back
+                    </button>
+                    <img
+                        src={`/api/download?inline=1&key=${encodeURIComponent(lightboxFile.key)}`}
+                        alt={lightboxFile.key}
+                        style={{
+                            maxWidth: "90vw",
+                            maxHeight: "85vh",
+                            objectFit: "contain",
+                            borderRadius: 8,
+                            background: "#000",
+                        }}
+                    />
+                </div>
+            </div>
+        )}
         </div>
     );
 }
