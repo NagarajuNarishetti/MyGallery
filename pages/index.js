@@ -1,0 +1,350 @@
+import { useState, useEffect } from "react";
+
+export default function Home() {
+    const [files, setFiles] = useState([]); // ✅ start as empty array
+    const [uploading, setUploading] = useState(false);
+    const [activeTab, setActiveTab] = useState("images");
+    const [sortKey, setSortKey] = useState("dateDesc"); // dateDesc, dateAsc, sizeAsc, sizeDesc, nameAsc, nameDesc
+    const [hoverUpload, setHoverUpload] = useState(false);
+    const [hoverTab, setHoverTab] = useState(null);
+    const [theme, setTheme] = useState("light");
+
+    async function fetchFiles() {
+        try {
+            const res = await fetch("/api/list");
+            const data = await res.json();
+            setFiles(data.files || []); // ✅ fallback to []
+        } catch (err) {
+            console.error("Error fetching files:", err);
+            setFiles([]); // ✅ never leave it undefined
+        }
+    }
+
+    useEffect(() => {
+        fetchFiles();
+    }, []);
+
+    useEffect(() => {
+        try {
+            const current = document.documentElement.getAttribute("data-theme") || "light";
+            setTheme(current);
+        } catch { }
+    }, []);
+
+    function toggleTheme() {
+        const next = theme === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        try {
+            localStorage.setItem("theme", next);
+        } catch { }
+        setTheme(next);
+    }
+
+    async function handleUpload(e) {
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append("file", e.target.file.files[0]);
+
+        setUploading(true);
+        await fetch("/api/upload", { method: "POST", body: formData });
+        setUploading(false);
+
+        fetchFiles();
+    }
+
+    async function handleDelete(key) {
+        await fetch(`/api/delete?key=${key}`, { method: "DELETE" });
+        fetchFiles();
+    }
+
+    const isVideo = (name) => /\.(mp4|mov|webm|avi|mkv)$/i.test(name || "");
+    const imageFiles = (files || []).filter((f) => !isVideo(f.key));
+    const videoFiles = (files || []).filter((f) => isVideo(f.key));
+
+    function sortFilesBy(list, key) {
+        const arr = [...list];
+        const byName = (a, b) => a.key.localeCompare(b.key, undefined, { sensitivity: "base" });
+        const toSize = (f) => (typeof f.size === "number" ? f.size : -1);
+        const toTime = (f) => {
+            if (!f.lastModified) return 0;
+            const t = new Date(f.lastModified).getTime();
+            return Number.isFinite(t) ? t : 0;
+        };
+        switch (key) {
+            case "nameAsc":
+                arr.sort(byName);
+                break;
+            case "nameDesc":
+                arr.sort((a, b) => -byName(a, b));
+                break;
+            case "sizeAsc":
+                arr.sort((a, b) => toSize(a) - toSize(b));
+                break;
+            case "sizeDesc":
+                arr.sort((a, b) => toSize(b) - toSize(a));
+                break;
+            case "dateAsc":
+                arr.sort((a, b) => toTime(a) - toTime(b));
+                break;
+            case "dateDesc":
+            default:
+                arr.sort((a, b) => toTime(b) - toTime(a));
+        }
+        return arr;
+    }
+
+    const Card = ({ file, children }) => {
+        const [hover, setHover] = useState(false);
+        return (
+            <div
+                onMouseEnter={() => setHover(true)}
+                onMouseLeave={() => setHover(false)}
+                style={{
+                    border: hover ? "1px solid var(--primary-soft)" : "1px solid var(--border)",
+                    padding: 12,
+                    borderRadius: 10,
+                    textAlign: "center",
+                    boxShadow: hover
+                        ? "0 8px 18px rgba(0,0,0,0.12)"
+                        : "0 2px 8px rgba(0,0,0,0.06)",
+                    background: "var(--card-bg)",
+                    transform: hover ? "translateY(-2px) scale(1.02)" : "none",
+                    transition:
+                        "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
+                }}
+            >
+                <div style={{ borderRadius: 8, overflow: "hidden" }}>{children}</div>
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--text)", fontWeight: 600 }}>{file.key}</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>
+                    {formatSize(file.size)} · {formatTime(file.lastModified)}
+                </div>
+                <div style={{ marginTop: 8, display: "flex", gap: 8, justifyContent: "center" }}>
+                    <a
+                        href={`/api/download?key=${encodeURIComponent(file.key)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid transparent",
+                            background: "var(--primary)",
+                            color: "white",
+                            textDecoration: "none",
+                            display: "inline-block",
+                            transform: "translateY(0)",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                            transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
+                            e.currentTarget.style.boxShadow = "0 8px 16px rgba(0,0,0,0.14)";
+                            e.currentTarget.style.borderColor = "var(--primary)";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = "translateY(0)";
+                            e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.06)";
+                            e.currentTarget.style.borderColor = "transparent";
+                        }}
+                    >
+                        Download
+                    </a>
+                    <button
+                        onClick={() => handleDelete(file.key)}
+                        style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            background: "var(--danger)",
+                            color: "white",
+                            border: "1px solid transparent",
+                            cursor: "pointer",
+                            transform: "translateY(0)",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                            transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
+                            e.currentTarget.style.boxShadow = "0 8px 16px rgba(0,0,0,0.14)";
+                            e.currentTarget.style.borderColor = "var(--danger)";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = "translateY(0)";
+                            e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.06)";
+                            e.currentTarget.style.borderColor = "transparent";
+                        }}
+                    >
+                        Delete
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const Grid = ({ items, render }) => (
+        <div
+            style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                gap: 20,
+                marginTop: 16,
+            }}
+        >
+            {items.map((file) => (
+                <Card key={file.key} file={file}>{render(file)}</Card>
+            ))}
+        </div>
+    );
+
+    function formatSize(bytes) {
+        if (!bytes && bytes !== 0) return "";
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let size = bytes;
+        let u = 0;
+        while (size >= 1024 && u < units.length - 1) {
+            size /= 1024;
+            u += 1;
+        }
+        return `${size.toFixed(size < 10 && u > 0 ? 1 : 0)} ${units[u]}`;
+    }
+
+    function formatTime(iso) {
+        if (!iso) return "";
+        try {
+            const d = new Date(iso);
+            return d.toLocaleString();
+        } catch { }
+        return "";
+    }
+
+    return (
+        <div style={{ padding: 24, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <h1 style={{ fontSize: 28, margin: 0 }}>📸 My Gallery</h1>
+                <div style={{ marginLeft: "auto" }}>
+                    <button
+                        onClick={toggleTheme}
+                        aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                        style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid var(--border)",
+                            background: "var(--card-bg)",
+                            color: "var(--text)",
+                            cursor: "pointer",
+                            transform: "translateY(0)",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                            transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
+                            e.currentTarget.style.boxShadow = "0 8px 16px rgba(0,0,0,0.14)";
+                            e.currentTarget.style.borderColor = "var(--primary-soft)";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = "translateY(0)";
+                            e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.06)";
+                            e.currentTarget.style.borderColor = "var(--border)";
+                        }}
+                    >
+                        {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+                    </button>
+                </div>
+            </div>
+
+            {/* Upload */}
+            <form onSubmit={handleUpload} style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                <input type="file" name="file" required />
+                <button
+                    type="submit"
+                    disabled={uploading}
+                    style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: `1px solid ${hoverUpload ? "var(--success)" : "transparent"}`,
+                        background: uploading ? "var(--neutral-500)" : "var(--success)",
+                        color: "white",
+                        cursor: uploading ? "not-allowed" : "pointer",
+                        transform: hoverUpload && !uploading ? "translateY(-1px) scale(1.03)" : "none",
+                        boxShadow: hoverUpload && !uploading ? "0 8px 16px rgba(0,0,0,0.14)" : "0 2px 6px rgba(0,0,0,0.06)",
+                        transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
+                    }}
+                    onMouseEnter={() => setHoverUpload(true)}
+                    onMouseLeave={() => setHoverUpload(false)}
+                >
+                    {uploading ? "Uploading..." : "Upload"}
+                </button>
+            </form>
+
+            {/* Tabs + Sort */}
+            <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
+                {[
+                    { id: "images", label: "Images" },
+                    { id: "videos", label: "Videos" },
+                ].map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        onMouseEnter={() => setHoverTab(tab.id)}
+                        onMouseLeave={() => setHoverTab((t) => (t === tab.id ? null : t))}
+                        style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: `1px solid ${hoverTab === tab.id || activeTab === tab.id ? "var(--primary-soft)" : "var(--border)"}`,
+                            background: activeTab === tab.id ? "var(--tab-active-bg)" : "var(--tab-inactive-bg)",
+                            color: activeTab === tab.id ? "var(--tab-active-text)" : "var(--tab-inactive-text)",
+                            cursor: "pointer",
+                            transform: hoverTab === tab.id ? "translateY(-1px) scale(1.03)" : "none",
+                            boxShadow: hoverTab === tab.id ? "0 8px 16px rgba(0,0,0,0.14)" : "0 2px 6px rgba(0,0,0,0.06)",
+                            transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
+                        }}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+
+                <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                    <label htmlFor="sortBy" style={{ color: "var(--muted)", fontSize: 14 }}>Sort by</label>
+                    <select
+                        id="sortBy"
+                        value={sortKey}
+                        onChange={(e) => setSortKey(e.target.value)}
+                        style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card-bg)", color: "var(--text)" }}
+                    >
+                        <option value="dateDesc">Date: Latest → Oldest</option>
+                        <option value="dateAsc">Date: Oldest → Latest</option>
+                        <option value="sizeAsc">Size: Small → Large</option>
+                        <option value="sizeDesc">Size: Large → Small</option>
+                        <option value="nameAsc">Name: A → Z</option>
+                        <option value="nameDesc">Name: Z → A</option>
+                    </select>
+                </div>
+            </div>
+
+            {/* Content */}
+            {files.length === 0 ? (
+                <p style={{ marginTop: 12, color: "var(--muted)" }}>No files yet. Upload one above 👆</p>
+            ) : activeTab === "images" ? (
+                <Grid
+                    items={sortFilesBy(imageFiles, sortKey)}
+                    render={(file) => (
+                        <img
+                            src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
+                            alt={file.key}
+                            style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 8 }}
+                        />
+                    )}
+                />
+            ) : (
+                <Grid
+                    items={sortFilesBy(videoFiles, sortKey)}
+                    render={(file) => (
+                        <video
+                            controls
+                            src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
+                            style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 8, background: "var(--video-bg)" }}
+                        />
+                    )}
+                />
+            )}
+        </div>
+    );
+}
