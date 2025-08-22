@@ -9,6 +9,8 @@ export default function Home() {
     const [hoverTab, setHoverTab] = useState(null);
     const [theme, setTheme] = useState("light");
     const [lightboxFile, setLightboxFile] = useState(null);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [customName, setCustomName] = useState("");
 
     async function fetchFiles() {
         try {
@@ -55,11 +57,21 @@ export default function Home() {
     async function handleUpload(e) {
         e.preventDefault();
         const formData = new FormData();
-        formData.append("file", e.target.file.files[0]);
+        const fileFromInput = selectedFile || e.target.file.files[0];
+        if (!fileFromInput) return;
+        formData.append("file", fileFromInput);
+        if (customName && customName.trim()) {
+            formData.append("key", customName.trim());
+        }
 
         setUploading(true);
         await fetch("/api/upload", { method: "POST", body: formData });
         setUploading(false);
+
+        // Reset form state to default view
+        setSelectedFile(null);
+        setCustomName("");
+        e.target.reset();
 
         fetchFiles();
     }
@@ -263,8 +275,33 @@ export default function Home() {
             </div>
 
             {/* Upload */}
-            <form onSubmit={handleUpload} style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                <input type="file" name="file" required />
+            <form onSubmit={handleUpload} style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                    type="file"
+                    name="file"
+                    required
+                    onChange={(e) => {
+                        const f = e.target.files && e.target.files[0];
+                        setSelectedFile(f || null);
+                        if (f && f.name) {
+                            const dot = f.name.lastIndexOf(".");
+                            const base = dot > -1 ? f.name.slice(0, dot) : f.name;
+                            setCustomName(base);
+                        } else {
+                            setCustomName("");
+                        }
+                    }}
+                />
+                {selectedFile && (
+                    <input
+                        type="text"
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        placeholder="Custom name (optional)"
+                        aria-label="Custom name"
+                        style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card-bg)", color: "var(--text)", minWidth: 220 }}
+                    />
+                )}
                 <button
                     type="submit"
                     disabled={uploading}
@@ -358,59 +395,59 @@ export default function Home() {
                     )}
                 />
             )}
-        {/* Lightbox Modal */}
-        {lightboxFile && (
-            <div
-                onClick={() => setLightboxFile(null)}
-                style={{
-                    position: "fixed",
-                    top: 0,
-                    left: 0,
-                    width: "100vw",
-                    height: "100vh",
-                    background: "rgba(0,0,0,0.8)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    zIndex: 1000,
-                    padding: 16,
-                }}
-            >
+            {/* Lightbox Modal */}
+            {lightboxFile && (
                 <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ position: "relative", maxWidth: "90vw", maxHeight: "85vh" }}
+                    onClick={() => setLightboxFile(null)}
+                    style={{
+                        position: "fixed",
+                        top: 0,
+                        left: 0,
+                        width: "100vw",
+                        height: "100vh",
+                        background: "rgba(0,0,0,0.8)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 1000,
+                        padding: 16,
+                    }}
                 >
-                    <button
-                        onClick={() => setLightboxFile(null)}
-                        style={{
-                            position: "absolute",
-                            top: -8,
-                            left: -8,
-                            padding: "8px 12px",
-                            borderRadius: 8,
-                            border: "1px solid var(--border)",
-                            background: "var(--card-bg)",
-                            color: "var(--text)",
-                            cursor: "pointer",
-                            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-                        }}
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ position: "relative", maxWidth: "90vw", maxHeight: "85vh" }}
                     >
-                        ← Back
-                    </button>
-                    <img
-                        src={`/api/download?inline=1&key=${encodeURIComponent(lightboxFile.key)}`}
-                        alt={lightboxFile.key}
-                        style={{
-                            maxWidth: "90vw",
-                            maxHeight: "85vh",
-                            objectFit: "contain",
-                            borderRadius: 8,
-                            background: "#000",
-                        }}
-                    />
+                        <button
+                            onClick={() => setLightboxFile(null)}
+                            style={{
+                                position: "absolute",
+                                top: -8,
+                                left: -8,
+                                padding: "8px 12px",
+                                borderRadius: 8,
+                                border: "1px solid var(--border)",
+                                background: "var(--card-bg)",
+                                color: "var(--text)",
+                                cursor: "pointer",
+                                boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                            }}
+                        >
+                            ← Back
+                        </button>
+                        <img
+                            src={`/api/download?inline=1&key=${encodeURIComponent(lightboxFile.key)}`}
+                            alt={lightboxFile.key}
+                            style={{
+                                maxWidth: "90vw",
+                                maxHeight: "85vh",
+                                objectFit: "contain",
+                                borderRadius: 8,
+                                background: "#000",
+                            }}
+                        />
+                    </div>
                 </div>
-            </div>
-        )}
+            )}
         </div>
     );
 }
