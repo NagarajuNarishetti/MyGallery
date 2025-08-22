@@ -47,12 +47,30 @@ export default function Home() {
     useEffect(() => {
         function onKeyDown(e) {
             if (e.key === "Escape") setLightboxFile(null);
+            if (!lightboxFile) return;
+            if (e.key === "ArrowRight") moveLightbox(1);
+            if (e.key === "ArrowLeft") moveLightbox(-1);
         }
         if (lightboxFile) {
             window.addEventListener("keydown", onKeyDown);
             return () => window.removeEventListener("keydown", onKeyDown);
         }
     }, [lightboxFile]);
+
+    // Helpers to navigate lightbox
+    function getVisibleList() {
+        // Only images open a lightbox in this UI
+        return sortFilesBy(imageFiles, sortKey);
+    }
+
+    function moveLightbox(delta) {
+        const list = getVisibleList();
+        if (!lightboxFile || !list.length) return;
+        const idx = list.findIndex((f) => f.key === lightboxFile.key);
+        if (idx === -1) return;
+        const nextIdx = (idx + delta + list.length) % list.length;
+        setLightboxFile(list[nextIdx]);
+    }
 
     async function handleUpload(e) {
         e.preventDefault();
@@ -433,6 +451,53 @@ export default function Home() {
                             }}
                         >
                             ← Back
+                        </button>
+                        {/* Left/Right arrows */}
+                        <button
+                            aria-label="Previous"
+                            onClick={() => moveLightbox(-1)}
+                            style={{
+                                position: "absolute",
+                                top: "50%",
+                                left: -56,
+                                transform: "translateY(-50%)",
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                                border: "1px solid var(--border)",
+                                background: "rgba(255,255,255,0.12)",
+                                color: "#fff",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backdropFilter: "blur(2px)",
+                            }}
+                        >
+                            ‹
+                        </button>
+                        <button
+                            aria-label="Next"
+                            onClick={() => moveLightbox(1)}
+                            style={{
+                                position: "absolute",
+                                top: "50%",
+                                right: -56,
+                                transform: "translateY(-50%)",
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                                border: "1px solid var(--border)",
+                                background: "rgba(255,255,255,0.12)",
+                                color: "#fff",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backdropFilter: "blur(2px)",
+                            }}
+                        >
+                            ›
                         </button>
                         <img
                             src={`/api/download?inline=1&key=${encodeURIComponent(lightboxFile.key)}`}
