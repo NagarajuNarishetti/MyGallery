@@ -4,6 +4,8 @@ A lightweight Next.js app to upload, list, preview, download, and delete (with B
 
 For full details, see `ProjectExplanation.md`.
 
+Architecture and deep dive: see `ARCHITECTURE.md`.
+
 ## Visual Tour
 
 ### Light Mode
