@@ -82,16 +82,21 @@ export default function Home() {
 
     async function handleUpload(e) {
         e.preventDefault();
+        const input = e.target.file;
+        const files = Array.from(input?.files || []);
+        const isMulti = files.length > 1;
         const formData = new FormData();
-        const fileFromInput = selectedFile || e.target.file.files[0];
-        if (!fileFromInput) return;
-        formData.append("file", fileFromInput);
-        if (customName && customName.trim()) {
-            formData.append("key", customName.trim());
+        if (!files.length) return;
+        if (isMulti) {
+            for (const f of files) formData.append("files", f);
+        } else {
+            const fileFromInput = selectedFile || files[0];
+            formData.append("file", fileFromInput);
+            if (customName && customName.trim()) formData.append("key", customName.trim());
         }
 
         setUploading(true);
-        await fetch("/api/upload", { method: "POST", body: formData });
+        await fetch(`/api/upload${isMulti ? "?multi=1" : ""}`, { method: "POST", body: formData });
         setUploading(false);
 
         // Reset form state to default view
@@ -303,6 +308,7 @@ export default function Home() {
                     type="file"
                     name="file"
                     required
+                    multiple
                     onChange={(e) => {
                         const f = e.target.files && e.target.files[0];
                         setSelectedFile(f || null);
