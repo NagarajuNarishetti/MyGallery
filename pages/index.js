@@ -5,12 +5,14 @@ export default function Home() {
     const [uploading, setUploading] = useState(false);
     const [activeTab, setActiveTab] = useState("images");
     const [sortKey, setSortKey] = useState("dateDesc"); // dateDesc, dateAsc, sizeAsc, sizeDesc, nameAsc, nameDesc
+    const [viewMode, setViewMode] = useState("grid"); // grid | list
     const [hoverUpload, setHoverUpload] = useState(false);
     const [hoverTab, setHoverTab] = useState(null);
     const [theme, setTheme] = useState("light");
     const [lightboxFile, setLightboxFile] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
     const [customName, setCustomName] = useState("");
+    const [binFiles, setBinFiles] = useState([]);
 
     async function fetchFiles() {
         try {
@@ -26,6 +28,12 @@ export default function Home() {
     useEffect(() => {
         fetchFiles();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === "bin") {
+            fetchTrash();
+        }
+    }, [activeTab]);
 
     useEffect(() => {
         try {
@@ -95,8 +103,30 @@ export default function Home() {
     }
 
     async function handleDelete(key) {
-        await fetch(`/api/delete?key=${key}`, { method: "DELETE" });
+        await fetch(`/api/trash-move?key=${encodeURIComponent(key)}`, { method: "POST" });
         fetchFiles();
+    }
+
+    async function fetchTrash() {
+        try {
+            const res = await fetch("/api/trash-list");
+            const data = await res.json();
+            setBinFiles(data.files || []);
+        } catch (err) {
+            console.error("Error fetching trash:", err);
+            setBinFiles([]);
+        }
+    }
+
+    async function handleRestore(key) {
+        await fetch(`/api/trash-restore?key=${encodeURIComponent(key)}`, { method: "POST" });
+        fetchTrash();
+        fetchFiles();
+    }
+
+    async function handleDeletePermanent(key) {
+        await fetch(`/api/trash-delete?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+        fetchTrash();
     }
 
     const isVideo = (name) => /\.(mp4|mov|webm|avi|mkv)$/i.test(name || "");
@@ -135,7 +165,7 @@ export default function Home() {
         return arr;
     }
 
-    const Card = ({ file, children }) => {
+    const Card = ({ file, children, renderActions }) => {
         const [hover, setHover] = useState(false);
         return (
             <div
@@ -160,68 +190,12 @@ export default function Home() {
                 <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>
                     {formatSize(file.size)} · {formatTime(file.lastModified)}
                 </div>
-                <div style={{ marginTop: 8, display: "flex", gap: 8, justifyContent: "center" }}>
-                    <a
-                        href={`/api/download?key=${encodeURIComponent(file.key)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                            padding: "6px 10px",
-                            borderRadius: 8,
-                            border: "1px solid transparent",
-                            background: "var(--primary)",
-                            color: "white",
-                            textDecoration: "none",
-                            display: "inline-block",
-                            transform: "translateY(0)",
-                            boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-                            transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
-                            e.currentTarget.style.boxShadow = "0 8px 16px rgba(0,0,0,0.14)";
-                            e.currentTarget.style.borderColor = "var(--primary)";
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = "translateY(0)";
-                            e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.06)";
-                            e.currentTarget.style.borderColor = "transparent";
-                        }}
-                    >
-                        Download
-                    </a>
-                    <button
-                        onClick={() => handleDelete(file.key)}
-                        style={{
-                            padding: "6px 10px",
-                            borderRadius: 8,
-                            background: "var(--danger)",
-                            color: "white",
-                            border: "1px solid transparent",
-                            cursor: "pointer",
-                            transform: "translateY(0)",
-                            boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-                            transition: "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = "translateY(-1px) scale(1.03)";
-                            e.currentTarget.style.boxShadow = "0 8px 16px rgba(0,0,0,0.14)";
-                            e.currentTarget.style.borderColor = "var(--danger)";
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = "translateY(0)";
-                            e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.06)";
-                            e.currentTarget.style.borderColor = "transparent";
-                        }}
-                    >
-                        Delete
-                    </button>
-                </div>
+                <div style={{ marginTop: 8, display: "flex", gap: 8, justifyContent: "center" }}>{renderActions ? renderActions(file) : null}</div>
             </div>
         );
     };
 
-    const Grid = ({ items, render }) => (
+    const Grid = ({ items, render, actions }) => (
         <div
             style={{
                 display: "grid",
@@ -231,7 +205,38 @@ export default function Home() {
             }}
         >
             {items.map((file) => (
-                <Card key={file.key} file={file}>{render(file)}</Card>
+                <Card key={file.key} file={file} renderActions={actions}>{render(file)}</Card>
+            ))}
+        </div>
+    );
+
+    const ListView = ({ items, render, actions }) => (
+        <div style={{ marginTop: 16 }}>
+            {items.map((file) => (
+                <div
+                    key={file.key}
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: 12,
+                        border: "1px solid var(--border)",
+                        borderRadius: 10,
+                        background: "var(--card-bg)",
+                        marginBottom: 10,
+                    }}
+                >
+                    <div style={{ width: 80, height: 60, borderRadius: 8, overflow: "hidden", background: "var(--video-bg)" }}>
+                        {render(file)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>{file.key}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>{formatSize(file.size)} · {formatTime(file.lastModified)}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                        {actions ? actions(file) : null}
+                    </div>
+                </div>
             ))}
         </div>
     );
@@ -346,6 +351,7 @@ export default function Home() {
                 {[
                     { id: "images", label: "Images" },
                     { id: "videos", label: "Videos" },
+                    { id: "bin", label: "Bin" },
                 ].map((tab) => (
                     <button
                         key={tab.id}
@@ -383,35 +389,166 @@ export default function Home() {
                         <option value="nameAsc">Name: A → Z</option>
                         <option value="nameDesc">Name: Z → A</option>
                     </select>
+                    <div style={{ display: "flex", gap: 6, marginLeft: 8 }}>
+                        <button
+                            aria-label="Grid view"
+                            onClick={() => setViewMode("grid")}
+                            style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: `1px solid ${viewMode === "grid" ? "var(--primary-soft)" : "var(--border)"}`,
+                                background: viewMode === "grid" ? "var(--tab-active-bg)" : "var(--tab-inactive-bg)",
+                                color: viewMode === "grid" ? "var(--tab-active-text)" : "var(--tab-inactive-text)",
+                                cursor: "pointer",
+                            }}
+                        >
+                            Grid
+                        </button>
+                        <button
+                            aria-label="List view"
+                            onClick={() => setViewMode("list")}
+                            style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: `1px solid ${viewMode === "list" ? "var(--primary-soft)" : "var(--border)"}`,
+                                background: viewMode === "list" ? "var(--tab-active-bg)" : "var(--tab-inactive-bg)",
+                                color: viewMode === "list" ? "var(--tab-active-text)" : "var(--tab-inactive-text)",
+                                cursor: "pointer",
+                            }}
+                        >
+                            List
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Content */}
-            {files.length === 0 ? (
+            {activeTab !== "bin" && files.length === 0 ? (
                 <p style={{ marginTop: 12, color: "var(--muted)" }}>No files yet. Upload one above 👆</p>
-            ) : activeTab === "images" ? (
-                <Grid
-                    items={sortFilesBy(imageFiles, sortKey)}
-                    render={(file) => (
-                        <img
-                            src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
-                            alt={file.key}
-                            style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 8, cursor: "zoom-in" }}
-                            onClick={() => setLightboxFile(file)}
-                        />
-                    )}
-                />
-            ) : (
-                <Grid
-                    items={sortFilesBy(videoFiles, sortKey)}
-                    render={(file) => (
-                        <video
-                            controls
-                            src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
-                            style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 8, background: "var(--video-bg)" }}
-                        />
-                    )}
-                />
+            ) : null}
+
+            {activeTab === "images" && (
+                viewMode === "grid" ? (
+                    <Grid
+                        items={sortFilesBy(imageFiles, sortKey)}
+                        render={(file) => (
+                            <img
+                                src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
+                                alt={file.key}
+                                style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 8, cursor: "zoom-in" }}
+                                onClick={() => setLightboxFile(file)}
+                            />
+                        )}
+                        actions={(file) => (
+                            <>
+                                <a href={`/api/download?key=${encodeURIComponent(file.key)}`} target="_blank" rel="noreferrer" style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid transparent", background: "var(--primary)", color: "white", textDecoration: "none" }}>Download</a>
+                                <button onClick={() => handleDelete(file.key)} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--danger)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Delete</button>
+                            </>
+                        )}
+                    />
+                ) : (
+                    <ListView
+                        items={sortFilesBy(imageFiles, sortKey)}
+                        render={(file) => (
+                            <img
+                                src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
+                                alt={file.key}
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                onClick={() => setLightboxFile(file)}
+                            />
+                        )}
+                        actions={(file) => (
+                            <>
+                                <a href={`/api/download?key=${encodeURIComponent(file.key)}`} target="_blank" rel="noreferrer" style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid transparent", background: "var(--primary)", color: "white", textDecoration: "none" }}>Download</a>
+                                <button onClick={() => handleDelete(file.key)} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--danger)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Delete</button>
+                            </>
+                        )}
+                    />
+                )
+            )}
+
+            {activeTab === "videos" && (
+                viewMode === "grid" ? (
+                    <Grid
+                        items={sortFilesBy(videoFiles, sortKey)}
+                        render={(file) => (
+                            <video
+                                controls
+                                src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
+                                style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 8, background: "var(--video-bg)" }}
+                            />
+                        )}
+                        actions={(file) => (
+                            <>
+                                <a href={`/api/download?key=${encodeURIComponent(file.key)}`} target="_blank" rel="noreferrer" style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid transparent", background: "var(--primary)", color: "white", textDecoration: "none" }}>Download</a>
+                                <button onClick={() => handleDelete(file.key)} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--danger)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Delete</button>
+                            </>
+                        )}
+                    />
+                ) : (
+                    <ListView
+                        items={sortFilesBy(videoFiles, sortKey)}
+                        render={(file) => (
+                            <video
+                                controls
+                                src={`/api/download?inline=1&key=${encodeURIComponent(file.key)}`}
+                                style={{ width: "100%", height: "100%", objectFit: "cover", background: "var(--video-bg)" }}
+                            />
+                        )}
+                        actions={(file) => (
+                            <>
+                                <a href={`/api/download?key=${encodeURIComponent(file.key)}`} target="_blank" rel="noreferrer" style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid transparent", background: "var(--primary)", color: "white", textDecoration: "none" }}>Download</a>
+                                <button onClick={() => handleDelete(file.key)} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--danger)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Delete</button>
+                            </>
+                        )}
+                    />
+                )
+            )}
+
+            {activeTab === "bin" && (
+                viewMode === "grid" ? (
+                    <Grid
+                        items={sortFilesBy(binFiles, sortKey)}
+                        render={(file) => (
+                            isVideo(file.key) ? (
+                                <div style={{ width: "100%", height: 220, borderRadius: 8, background: "var(--video-bg)" }} />
+                            ) : (
+                                <img
+                                    src={`/api/download?inline=1&key=${encodeURIComponent("trash/" + file.key)}`}
+                                    alt={file.key}
+                                    style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: 8 }}
+                                />
+                            )
+                        )}
+                        actions={(file) => (
+                            <>
+                                <button onClick={() => handleRestore(file.key)} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--success)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Restore</button>
+                                <button onClick={() => handleDeletePermanent(file.key)} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--danger)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Delete Permanently</button>
+                            </>
+                        )}
+                    />
+                ) : (
+                    <ListView
+                        items={sortFilesBy(binFiles, sortKey)}
+                        render={(file) => (
+                            isVideo(file.key) ? (
+                                <div style={{ width: "100%", height: "100%", background: "var(--video-bg)" }} />
+                            ) : (
+                                <img
+                                    src={`/api/download?inline=1&key=${encodeURIComponent("trash/" + file.key)}`}
+                                    alt={file.key}
+                                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                />
+                            )
+                        )}
+                        actions={(file) => (
+                            <>
+                                <button onClick={() => handleRestore(file.key)} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--success)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Restore</button>
+                                <button onClick={() => handleDeletePermanent(file.key)} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--danger)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Delete Permanently</button>
+                            </>
+                        )}
+                    />
+                )
             )}
             {/* Lightbox Modal */}
             {lightboxFile && (
