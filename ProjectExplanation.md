@@ -11,14 +11,18 @@ A lightweight, full‑stack Next.js app for uploading, listing, previewing, down
 - **Frontend (Next.js + React)**: Single page (`pages/index.js`) that:
   - Lists files from `/api/list`
   - Uploads with a form to `/api/upload`
-  - Deletes via `/api/delete?key=...`
+  - Soft‑deletes to Bin via `/api/trash-move?key=...` (no immediate permanent deletion in main tabs)
   - Streams media via `/api/download?key=...&inline=1`
-  - Provides a light/dark theme toggle with persistent preference
+  - Provides light/dark theme toggle, grid/list view toggle, and tabs (Images, Videos, Bin)
 - **Backend (Next.js API routes)**: Thin API layer using AWS SDK v3 to interact with S3/MinIO:
   - `pages/api/upload.js`: Receive and store files
   - `pages/api/list.js`: List objects
   - `pages/api/download.js`: Stream an object to client
-  - `pages/api/delete.js`: Delete an object
+  - `pages/api/trash-move.js`: Move an object to `trash/` prefix (soft delete)
+  - `pages/api/trash-list.js`: List objects under the `trash/` prefix (Bin)
+  - `pages/api/trash-restore.js`: Restore `trash/<key>` back to `<key>`
+  - `pages/api/trash-delete.js`: Permanently delete `trash/<key>`
+  - `pages/api/delete.js`: Legacy direct delete (not used by UI after Bin feature)
   - `pages/api/health.js`: Basic connectivity and bucket existence info
 - **Storage**: `lib/s3Client.js` configures an `S3Client` instance (MinIO by default, AWS S3 if configured). `lib/ensureBucket.js` ensures the bucket exists.
 
@@ -31,11 +35,15 @@ A lightweight, full‑stack Next.js app for uploading, listing, previewing, down
 - **Styling**: Inline styles powered by global CSS variables for theming
 
 ### Repository structure
-- `pages/index.js`: UI for upload, listing, preview, delete, download, sorting, and theme toggle
+- `pages/index.js`: UI for upload, listing, preview, grid/list toggle, sorting, theme toggle, and Bin (restore/permanent delete)
 - `pages/api/upload.js`: POST multipart upload (field name: `file`)
 - `pages/api/list.js`: GET list of objects in the bucket
 - `pages/api/download.js`: GET stream of an object; `inline=1` for inline preview
-- `pages/api/delete.js`: DELETE an object by key
+- `pages/api/trash-move.js`: POST soft‑delete (copy to `trash/` then delete original)
+- `pages/api/trash-list.js`: GET Bin contents (objects under `trash/`)
+- `pages/api/trash-restore.js`: POST restore from Bin back to main
+- `pages/api/trash-delete.js`: DELETE permanently from Bin
+- `pages/api/delete.js`: Legacy direct delete (kept for compatibility)
 - `pages/api/health.js`: Health and storage diagnostics
 - `lib/s3Client.js`: Configured S3 client (endpoint, region, credentials)
 - `lib/ensureBucket.js`: Bucket existence/creation helper
@@ -82,12 +90,15 @@ npm run dev
 
 ### Frontend behavior
 - Fetches file metadata from `/api/list` on load.
-- Splits results into images and videos based on extension.
+- Tabs: Images, Videos, Bin (Bin lists `/api/trash-list`).
+- Grid/List view toggle for all tabs.
 - Sorting options: date (asc/desc), size (asc/desc), name (asc/desc).
-- Image grid: previews via `/api/download?inline=1&key=...`.
-- Video grid: HTML5 video with the same inline stream.
-- Download button: triggers a new tab download.
-- Delete button: calls `/api/delete` then refreshes the list.
+- Images: preview inline; click to open fullscreen lightbox with keyboard nav.
+- Videos: inline HTML5 video.
+- Download (Images/Videos): opens a download via `/api/download?key=...`.
+- Delete (Images/Videos): soft‑deletes to Bin via `/api/trash-move` and refreshes.
+- Bin actions: Restore (`/api/trash-restore`) or Delete Permanently (`/api/trash-delete`).
+ - Upload input supports selecting multiple files at once; UI sends them in one request when multiple are selected.
 
 ### Theming (Light/Dark)
 - Global CSS variables live in `styles/globals.css` for colors (bg, text, muted, border, card, primary, danger, etc.).
@@ -96,20 +107,31 @@ npm run dev
 
 ### API Endpoints
 - `POST /api/upload`
-  - Multipart form with field name `file` (single file)
-  - Uses `multer` memory storage; writes object to S3/MinIO via `PutObjectCommand`
-  - Response: `{ message: "Upload successful" }` or error JSON
+  - Single file: field `file`
+  - Multiple files: when query `?multi=1`, use repeated field `files`
+  - Uses in‑memory handling; writes object(s) to S3/MinIO via AWS SDK
+  - Response: `{ message, key }` (single) or `{ message, keys: [...] }` (multiple)
 - `GET /api/list`
   - Returns `{ files: [{ key, url, size, lastModified }] }`
 - `GET /api/download?key=...&inline=1`
   - Streams object; `inline=1` for inline preview, otherwise attachment download
+- `POST /api/trash-move?key=...`
+  - Soft‑delete: copies the object to `trash/<key>` and deletes the original
+- `GET /api/trash-list`
+  - Lists Bin contents; returns `{ files: [{ key, trashKey, size, lastModified }] }`
+- `POST /api/trash-restore?key=...`
+  - Restores `trash/<key>` back to `<key>` and deletes the trash copy
+- `DELETE /api/trash-delete?key=...`
+  - Permanently deletes `trash/<key>`
 - `DELETE /api/delete?key=...`
-  - Deletes the specified key; returns `{ message: "Deleted successfully" }`
+  - Legacy direct delete (not used in UI after Bin feature)
 - `GET /api/health`
   - Connectivity and bucket existence info; lists buckets for quick diagnostics
 
 ### Storage details
 - Keys are the original filenames provided by the client.
+- Bin is implemented as a prefix: objects moved to `trash/<key>` act as soft‑deleted.
+- Restore copies back to `<key>` and removes the `trash/` copy; permanent delete removes the `trash/` copy only.
 - Bucket is ensured on upload/list/download/delete via `ensureBucketExists`.
 - For MinIO, `forcePathStyle: true` is enabled for compatibility.
 
