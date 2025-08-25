@@ -13,6 +13,7 @@ export default function Home() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [customName, setCustomName] = useState("");
     const [binFiles, setBinFiles] = useState([]);
+    const [selectedKeys, setSelectedKeys] = useState(new Set());
 
     async function fetchFiles() {
         try {
@@ -33,6 +34,8 @@ export default function Home() {
         if (activeTab === "bin") {
             fetchTrash();
         }
+        // clear selection when switching tabs
+        setSelectedKeys(new Set());
     }, [activeTab]);
 
     useEffect(() => {
@@ -134,6 +137,62 @@ export default function Home() {
         fetchTrash();
     }
 
+    function toggleSelect(key) {
+        setSelectedKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            return next;
+        });
+    }
+
+    function clearSelection() {
+        setSelectedKeys(new Set());
+    }
+
+    async function bulkDeleteSelected() {
+        const keys = Array.from(selectedKeys);
+        if (!keys.length) return;
+        if (activeTab === "bin") {
+            await Promise.all(keys.map((k) => fetch(`/api/trash-delete?key=${encodeURIComponent(k)}`, { method: "DELETE" })));
+            await fetchTrash();
+        } else {
+            await Promise.all(keys.map((k) => fetch(`/api/trash-move?key=${encodeURIComponent(k)}`, { method: "POST" })));
+            await fetchFiles();
+        }
+        clearSelection();
+    }
+
+    async function bulkRestoreSelected() {
+        if (activeTab !== "bin") return;
+        const keys = Array.from(selectedKeys);
+        if (!keys.length) return;
+        await Promise.all(keys.map((k) => fetch(`/api/trash-restore?key=${encodeURIComponent(k)}`, { method: "POST" })));
+        await fetchTrash();
+        await fetchFiles();
+        clearSelection();
+    }
+
+    async function bulkDownloadSelected() {
+        const keys = Array.from(selectedKeys);
+        if (!keys.length) return;
+        const bin = activeTab === "bin";
+        const res = await fetch("/api/download-zip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ keys, bin }),
+        });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `gallery-selected-${Date.now()}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
     const isVideo = (name) => /\.(mp4|mov|webm|avi|mkv)$/i.test(name || "");
     const imageFiles = (files || []).filter((f) => !isVideo(f.key));
     const videoFiles = (files || []).filter((f) => isVideo(f.key));
@@ -170,7 +229,7 @@ export default function Home() {
         return arr;
     }
 
-    const Card = ({ file, children, renderActions }) => {
+    const Card = ({ file, children, renderActions, selectable, selected, onToggle }) => {
         const [hover, setHover] = useState(false);
         return (
             <div
@@ -188,8 +247,15 @@ export default function Home() {
                     transform: hover ? "translateY(-2px) scale(1.02)" : "none",
                     transition:
                         "transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease",
+                    position: "relative",
                 }}
             >
+                {selectable && (
+                    <label style={{ position: "absolute", top: 8, left: 8, background: "var(--card-bg)", borderRadius: 6, padding: "2px 6px", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                        <input type="checkbox" checked={!!selected} onChange={() => onToggle && onToggle(file.key)} />
+                        Select
+                    </label>
+                )}
                 <div style={{ borderRadius: 8, overflow: "hidden" }}>{children}</div>
                 <div style={{ marginTop: 8, fontSize: 12, color: "var(--text)", fontWeight: 600 }}>{file.key}</div>
                 <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>
@@ -210,7 +276,16 @@ export default function Home() {
             }}
         >
             {items.map((file) => (
-                <Card key={file.key} file={file} renderActions={actions}>{render(file)}</Card>
+                <Card
+                    key={file.key}
+                    file={file}
+                    renderActions={actions}
+                    selectable={true}
+                    selected={selectedKeys.has(file.key)}
+                    onToggle={toggleSelect}
+                >
+                    {render(file)}
+                </Card>
             ))}
         </div>
     );
@@ -231,6 +306,9 @@ export default function Home() {
                         marginBottom: 10,
                     }}
                 >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <input type="checkbox" checked={selectedKeys.has(file.key)} onChange={() => toggleSelect(file.key)} />
+                    </div>
                     <div style={{ width: 80, height: 60, borderRadius: 8, overflow: "hidden", background: "var(--video-bg)" }}>
                         {render(file)}
                     </div>
@@ -427,6 +505,23 @@ export default function Home() {
                     </div>
                 </div>
             </div>
+
+            {/* Bulk actions */}
+            {selectedKeys.size > 0 && (
+                <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", padding: 8, border: "1px solid var(--border)", borderRadius: 8, background: "var(--card-bg)" }}>
+                    <div style={{ fontSize: 14, color: "var(--muted)" }}>{selectedKeys.size} selected</div>
+                    <button onClick={bulkDownloadSelected} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--primary)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Download</button>
+                    {activeTab === "bin" ? (
+                        <>
+                            <button onClick={bulkRestoreSelected} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--success)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Restore</button>
+                            <button onClick={bulkDeleteSelected} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--danger)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Delete Permanently</button>
+                        </>
+                    ) : (
+                        <button onClick={bulkDeleteSelected} style={{ padding: "6px 10px", borderRadius: 8, background: "var(--danger)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Delete</button>
+                    )}
+                    <button onClick={clearSelection} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 8, background: "var(--neutral-500)", color: "white", border: "1px solid transparent", cursor: "pointer" }}>Clear</button>
+                </div>
+            )}
 
             {/* Content */}
             {activeTab !== "bin" && files.length === 0 ? (
