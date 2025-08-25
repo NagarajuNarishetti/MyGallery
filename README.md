@@ -1,6 +1,6 @@
 ## My Gallery
 
-A lightweight Next.js app to upload, list, preview, download, and delete images and videos on an S3‑compatible storage (MinIO locally, AWS S3 in production). Includes light/dark theme and sorting.
+A lightweight Next.js app to upload, list, preview, download, and delete (with Bin) images and videos on an S3‑compatible storage (MinIO locally, AWS S3 in production). Includes light/dark theme, sorting, grid/list views, multi-file upload, and multi-select with bulk download (zip) and delete/restore.
 
 For full details, see `ProjectExplanation.md`.
 
@@ -24,6 +24,26 @@ For full details, see `ProjectExplanation.md`.
 
 - Sorting options: Date (Latest → Oldest, Oldest → Latest), Size (Small → Large, Large → Small), Name (A → Z, Z → A).
 - Sorting applies independently within the active tab (Images or Videos).
+
+### Grid and List Views
+![Grid and List Views](Images/GridViewAndListView.png)
+
+- Toggle between Grid and List to suit your browsing style.
+- Works across Images, Videos, and Bin tabs.
+
+### Multi-select, Bulk Download and Delete/Restore
+![Select and Bulk Actions](Images/DowloadeAndDeleteMultipleFIlesWithSelectOption.png)
+
+- Select multiple items using the checkbox on each card/row.
+- Bulk Download creates a single ZIP file for all selected items.
+- In Images/Videos: bulk Delete moves items to Bin (soft delete).
+- In Bin: bulk Restore or Delete Permanently.
+
+### Trash Bin (Recently Deleted)
+![Trash Bin](Images/TrashBin.png)
+
+- Deleted items move to Bin under a `trash/` prefix in storage.
+- Restore brings an item back; Delete Permanently removes it from storage.
 
 ## Quick Start
 ```bash
